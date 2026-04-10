@@ -1,0 +1,44 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <!-- Outer perforated silhouette -->
+  <path filter="url(#shadow)" fill="#F6F6F6" fill-rule="evenodd" clip-rule="evenodd" d="
+    M64,58
+    C64,44 74,34 88,34
+    H424
+    C438,34 448,44 448,58
+    C448,74 460,82 474,82
+    C488,82 500,92 500,106
+    V406
+    C500,420 488,430 474,430
+    C460,430 448,438 448,454
+    C448,468 438,478 424,478
+    H88
+    C74,478 64,468 64,454
+    C64,438 52,430 38,430
+    C24,430 12,420 12,406
+    V106
+    C12,92 24,82 38,82
+    C52,82 64,74 64,58
+    Z
+
+    M122,116
+    H390
+    V396
+    H122
+    Z
+  "/>
+
+  <!-- small scallops all around -->
+  <g fill="#E9E9E9">
+    <circle cx="88" cy="34" r="12"/><circle cx="116" cy="34" r="12"/><circle cx="144" cy="34" r="12"/><circle cx="172" cy="34" r="12"/><circle cx="200" cy="34" r="12"/><circle cx="228" cy="34" r="12"/><circle cx="256" cy="34" r="12"/><circle cx="284" cy="34" r="12"/><circle cx="312" cy="34" r="12"/><circle cx="340" cy="34" r="12"/><circle cx="368" cy="34" r="12"/><circle cx="396" cy="34" r="12"/><circle cx="424" cy="34" r="12"/>
+    <circle cx="88" cy="478" r="12"/><circle cx="116" cy="478" r="12"/><circle cx="144" cy="478" r="12"/><circle cx="172" cy="478" r="12"/><circle cx="200" cy="478" r="12"/><circle cx="228" cy="478" r="12"/><circle cx="256" cy="478" r="12"/><circle cx="284" cy="478" r="12"/><circle cx="312" cy="478" r="12"/><circle cx="340" cy="478" r="12"/><circle cx="368" cy="478" r="12"/><circle cx="396" cy="478" r="12"/><circle cx="424" cy="478" r="12"/>
+
+    <circle cx="12" cy="106" r="12"/><circle cx="12" cy="134" r="12"/><circle cx="12" cy="162" r="12"/><circle cx="12" cy="190" r="12"/><circle cx="12" cy="218" r="12"/><circle cx="12" cy="246" r="12"/><circle cx="12" cy="274" r="12"/><circle cx="12" cy="302" r="12"/><circle cx="12" cy="330" r="12"/><circle cx="12" cy="358" r="12"/><circle cx="12" cy="386" r="12"/>
+    <circle cx="500" cy="106" r="12"/><circle cx="500" cy="134" r="12"/><circle cx="500" cy="162" r="12"/><circle cx="500" cy="190" r="12"/><circle cx="500" cy="218" r="12"/><circle cx="500" cy="246" r="12"/><circle cx="500" cy="274" r="12"/><circle cx="500" cy="302" r="12"/><circle cx="500" cy="330" r="12"/><circle cx="500" cy="358" r="12"/><circle cx="500" cy="386" r="12"/>
+  </g>
+</svg>
