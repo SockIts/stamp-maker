@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import './App.css'
+import { fetchSharedStamps, isSharedDatabaseConfigured, publishSharedStamp } from './sharedDatabase'
 
 type CropRect = {
   x: number
@@ -729,8 +730,16 @@ function App() {
 
   const refreshDatabaseStamps = async () => {
     try {
+      if (isSharedDatabaseConfigured) {
+        const shared = await fetchSharedStamps(300)
+        setDatabaseStamps(shared)
+        setDatabaseNotice('Showing community stamps.')
+        return
+      }
+
       const saved = await getSubmittedStamps()
       setDatabaseStamps(saved)
+      setDatabaseNotice('Shared DB not configured yet. Showing local stamps only.')
     } catch {
       setDatabaseNotice('Could not load database stamps.')
     }
@@ -742,14 +751,21 @@ function App() {
     setDatabaseNotice('')
     try {
       const composed = await renderModalSceneImage(100, true)
-      await saveSubmittedStamp({
-        id: crypto.randomUUID(),
-        src: composed,
-        createdAt: Date.now(),
-        wallColor: modalEdits.wallColor,
-      })
-      await refreshDatabaseStamps()
-      setDatabaseNotice('Stamp submitted to database.')
+
+      if (isSharedDatabaseConfigured) {
+        await publishSharedStamp(composed, modalEdits.wallColor)
+        await refreshDatabaseStamps()
+        setDatabaseNotice('Stamp published to community database.')
+      } else {
+        await saveSubmittedStamp({
+          id: crypto.randomUUID(),
+          src: composed,
+          createdAt: Date.now(),
+          wallColor: modalEdits.wallColor,
+        })
+        await refreshDatabaseStamps()
+        setDatabaseNotice('Shared DB not configured. Saved locally.')
+      }
     } catch {
       setDatabaseNotice('Could not submit stamp to database.')
     } finally {
