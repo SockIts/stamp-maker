@@ -500,6 +500,7 @@ function App() {
   const [databaseStamps, setDatabaseStamps] = useState<DatabaseStamp[]>([])
   const [isDatabaseOpen, setIsDatabaseOpen] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+  const [isEffectsMenuOpen, setIsEffectsMenuOpen] = useState(false)
   const [historyImages, setHistoryImages] = useState<string[]>([])
   const [isSubmittingToDatabase, setIsSubmittingToDatabase] = useState(false)
   const [databaseNotice, setDatabaseNotice] = useState('')
@@ -680,7 +681,10 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!imageSrc) return
+    if (!imageSrc) {
+      setIsEffectsMenuOpen(false)
+      return
+    }
 
     if (skipNextHistoryWriteRef.current) {
       skipNextHistoryWriteRef.current = false
@@ -1740,6 +1744,7 @@ function App() {
     setCrop(null)
     setError('')
     setIsDragOverPreview(false)
+    setIsHistoryOpen(false)
   }
 
   const applyPreset = (nextPreset: Preset) => {
@@ -2527,10 +2532,18 @@ function App() {
                       : `editor-main${isHistoryOpen ? ' has-history' : ''}`
                   }
                 >
-                  <aside className="editor-effects">
+                  <aside className={isEffectsMenuOpen ? 'editor-effects effects-open' : 'editor-effects effects-collapsed'}>
                     {hasImage && (
                       <>
-                        <nav className="effect-nav open" aria-label="Effects">
+                        <button
+                          type="button"
+                          className="effects-mobile-toggle"
+                          onClick={() => setIsEffectsMenuOpen((v) => !v)}
+                          aria-expanded={isEffectsMenuOpen}
+                        >
+                          {isEffectsMenuOpen ? 'Hide Effects' : 'Show Effects'}
+                        </button>
+                        <nav className={isEffectsMenuOpen ? 'effect-nav open' : 'effect-nav'} aria-label="Effects">
                           <div className="nav-mode-group" role="tablist" aria-label="Preview mode">
                             <button type="button" className={previewMode === 'single' ? 'effect-nav-item active' : 'effect-nav-item'} onClick={() => setPreviewMode('single')}>
                               <span className="effect-nav-icon" aria-hidden="true">◻</span>
