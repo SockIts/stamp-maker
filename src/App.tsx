@@ -535,6 +535,7 @@ function App() {
 
   const hasImage = useMemo(() => Boolean(imageSrc), [imageSrc])
   const isGridMode = previewMode === 'grid' || previewMode === 'grid2'
+  const isModalInteracting = textDrag.mode !== 'none' || iconDrag.mode !== 'none' || imageAdjustDrag.mode !== 'none'
   const gridSize = previewMode === 'grid2' ? 2 : 3
   const DATABASE_PAGE_SIZE = 15
   const totalDatabasePages = Math.max(1, Math.ceil(databaseStamps.length / DATABASE_PAGE_SIZE))
@@ -3107,7 +3108,10 @@ function App() {
             <div className="lightbox-preview-column" ref={modalPreviewRef}>
               <div
                 ref={modalStampFrameRef}
-                className={selectedStamp.stamp.preset === 'expand' ? 'stamp-frame lightbox-stamp stamp-frame-expand' : 'stamp-frame lightbox-stamp'}
+                className={selectedStamp.stamp.preset === 'expand'
+                  ? `stamp-frame lightbox-stamp stamp-frame-expand${isModalInteracting ? ' modal-gesture-lock' : ''}`
+                  : `stamp-frame lightbox-stamp${isModalInteracting ? ' modal-gesture-lock' : ''}`
+                }
                 style={
                   {
                     '--stamp-ratio': String(selectedStamp.stamp.ratio),
