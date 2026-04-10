@@ -2267,6 +2267,21 @@ function App() {
     renderEditedStamp(selectedStamp.stamp.src, modalEdits, false).then(setModalStampSrc)
   }, [selectedStamp, modalEdits])
 
+  useEffect(() => {
+    if (!selectedStamp) return
+
+    const prevBodyOverflow = document.body.style.overflow
+    const prevHtmlOverflow = document.documentElement.style.overflow
+
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = prevBodyOverflow
+      document.documentElement.style.overflow = prevHtmlOverflow
+    }
+  }, [selectedStamp])
+
   const resetModalEdits = () => {
     setModalEdits(createDefaultModalEdits())
   }
