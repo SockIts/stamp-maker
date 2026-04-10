@@ -37,6 +37,8 @@ Create `.env.local` in project root:
 ```bash
 VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+# optional: your own CORS-safe image import proxy
+VITE_IMAGE_PROXY_URL=https://your-proxy.example.com/image-proxy
 ```
 
 ## 4) Restart dev server

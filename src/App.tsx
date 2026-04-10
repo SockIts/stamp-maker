@@ -127,6 +127,7 @@ const STAMPS_DB_VERSION = 2
 const STAMPS_STORE_NAME = 'submitted-stamps'
 const HISTORY_STORE_NAME = 'history-images'
 const LOCAL_STAMPS_KEY = 'stamp-maker-local-stamps'
+const IMPORT_PROXY_URL = (import.meta.env.VITE_IMAGE_PROXY_URL as string | undefined)?.trim()
 
 const openStampsDb = () =>
   new Promise<IDBDatabase>((resolve, reject) => {
@@ -1712,11 +1713,12 @@ function App() {
     }
 
     const proxyCandidates = [
+      IMPORT_PROXY_URL ? `${IMPORT_PROXY_URL}${IMPORT_PROXY_URL.includes('?') ? '&' : '?'}url=${encodeURIComponent(raw)}` : '',
       `/image-proxy?url=${encodeURIComponent(raw)}`,
       raw,
       `https://corsproxy.io/?${encodeURIComponent(raw)}`,
       `https://api.allorigins.win/raw?url=${encodeURIComponent(raw)}`,
-    ]
+    ].filter(Boolean)
 
     for (const candidate of proxyCandidates) {
       try {
@@ -1728,8 +1730,7 @@ function App() {
       }
     }
 
-    // Last resort: direct URL assignment (may still work if browser can render it).
-    setImageSrc(raw)
+    setError('Could not import this URL. This host may block cross-origin image access (CORS). Please download the image and upload it directly.')
   }
 
   const resetUploadedImage = () => {
