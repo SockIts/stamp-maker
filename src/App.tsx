@@ -500,7 +500,6 @@ function App() {
   const [databaseStamps, setDatabaseStamps] = useState<DatabaseStamp[]>([])
   const [isDatabaseOpen, setIsDatabaseOpen] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
-  const [isEffectsMenuOpen, setIsEffectsMenuOpen] = useState(false)
   const [historyImages, setHistoryImages] = useState<string[]>([])
   const [isSubmittingToDatabase, setIsSubmittingToDatabase] = useState(false)
   const [databaseNotice, setDatabaseNotice] = useState('')
@@ -683,7 +682,6 @@ function App() {
 
   useEffect(() => {
     if (!imageSrc) {
-      setIsEffectsMenuOpen(false)
       return
     }
 
@@ -2548,18 +2546,14 @@ function App() {
                       : `editor-main${isHistoryOpen ? ' has-history' : ''}`
                   }
                 >
-                  <aside className={isEffectsMenuOpen ? 'editor-effects effects-open' : 'editor-effects effects-collapsed'}>
+                  <aside className="editor-effects">
                     {hasImage && (
                       <>
-                        <button
-                          type="button"
-                          className="effects-mobile-toggle"
-                          onClick={() => setIsEffectsMenuOpen((v) => !v)}
-                          aria-expanded={isEffectsMenuOpen}
-                        >
-                          {isEffectsMenuOpen ? 'Hide Effects' : 'Show Effects'}
-                        </button>
-                        <nav className={isEffectsMenuOpen ? 'effect-nav open' : 'effect-nav'} aria-label="Effects">
+                        <nav className="effect-nav" aria-label="Effects">
+                          <button type="button" className="effect-nav-item reset effect-reset-leading" onClick={resetEffects}>
+                            <span className="effect-nav-icon" aria-hidden="true">↺</span>
+                            <span className="effect-nav-label">Reset</span>
+                          </button>
                           <div className="nav-mode-group" role="tablist" aria-label="Preview mode">
                             <button type="button" className={previewMode === 'single' ? 'effect-nav-item active' : 'effect-nav-item'} onClick={() => setPreviewMode('single')}>
                               <span className="effect-nav-icon" aria-hidden="true">◻</span>
@@ -2589,23 +2583,24 @@ function App() {
                               <span className="effect-nav-label">3x3</span>
                             </button>
                           </div>
-                          {effectButtons.map((effect) => (
-                            <button
-                              key={effect.key}
-                              type="button"
-                              className={effects[effect.key] ? 'effect-nav-item active' : 'effect-nav-item'}
-                              onClick={() => toggleEffect(effect.key)}
-                              title={effect.label}
-                              aria-pressed={effects[effect.key]}
-                            >
-                              <span className="effect-nav-icon" aria-hidden="true">{effect.icon}</span>
-                              <span className="effect-nav-label">{effect.label}</span>
-                            </button>
-                          ))}
-                          <button type="button" className="effect-nav-item reset" onClick={resetEffects}>
-                            <span className="effect-nav-icon" aria-hidden="true">↺</span>
-                            <span className="effect-nav-label">Reset</span>
-                          </button>
+                          <div className="effect-carousel-row">
+                            <div className="effect-carousel" role="group" aria-label="Effect carousel">
+                              {effectButtons.map((effect) => (
+                                <button
+                                  key={effect.key}
+                                  type="button"
+                                  className={effects[effect.key] ? 'effect-nav-item active' : 'effect-nav-item'}
+                                  onClick={() => toggleEffect(effect.key)}
+                                  title={effect.label}
+                                  aria-pressed={effects[effect.key]}
+                                >
+                                  <span className="effect-nav-icon" aria-hidden="true">{effect.icon}</span>
+                                  <span className="effect-nav-label">{effect.label}</span>
+                                </button>
+                              ))}
+
+                            </div>
+                          </div>
 
                           <div className="effect-nav-sliders">
                             <label><span>Brightness</span><input type="range" min={BRIGHTNESS_MIN} max={BRIGHTNESS_MAX} step={1} value={brightnessLevel} onChange={(e) => updateLevel('brightnessLevel', Number(e.target.value))} /></label>
@@ -2754,7 +2749,7 @@ function App() {
             </div>
           </section>
 
-          <section className="bottom-stamps">
+          <section className={isHistoryOpen ? 'bottom-stamps history-open-mobile' : 'bottom-stamps'}>
             {stamps.length > 0 ? (
               <div className="stamps-rail">
                 {stamps.map((stamp, index) => {
@@ -3118,9 +3113,9 @@ function App() {
                     '--stamp-width-factor': '1',
                     '--stamp-scale': '1',
                     '--perforation-size': `${modalEdits.perforationSize}px`,
-                    '--stamp-image-padding': selectedStamp.stamp.preset === 'expand' ? '0px' : '14px',
-                    '--stamp-padding-top-bottom': selectedStamp.stamp.preset === 'expand' ? '0px' : '16px',
-                    '--stamp-padding-left-right': selectedStamp.stamp.preset === 'expand' ? '0px' : '16px',
+                    '--stamp-image-padding': selectedStamp.stamp.preset === 'expand' ? '0px' : 'var(--modal-stamp-image-padding, 14px)',
+                    '--stamp-padding-top-bottom': selectedStamp.stamp.preset === 'expand' ? '0px' : 'var(--modal-stamp-padding-y, 16px)',
+                    '--stamp-padding-left-right': selectedStamp.stamp.preset === 'expand' ? '0px' : 'var(--modal-stamp-padding-x, 16px)',
                   } as CSSProperties
                 }
               >
