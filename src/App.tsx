@@ -2955,6 +2955,7 @@ function App() {
               <label>
                 Wall color
                 <input
+                  className="modal-color-input"
                   type="color"
                   value={modalEdits.wallColor}
                   onChange={(e) => setModalEdits((prev) => ({ ...prev, wallColor: e.target.value }))}
@@ -2963,6 +2964,7 @@ function App() {
               <label>
                 Stamp color
                 <input
+                  className="modal-color-input"
                   type="color"
                   value={modalEdits.stampColor}
                   onChange={(e) => setModalEdits((prev) => ({ ...prev, stampColor: e.target.value }))}
