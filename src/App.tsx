@@ -876,16 +876,6 @@ function App() {
     })
   }
 
-  const drawEffectOverlays = (
-    _ctx: CanvasRenderingContext2D,
-    _x: number,
-    _y: number,
-    _width: number,
-    _height: number,
-    _profile: EffectProfile,
-  ) => {
-  }
-
   const drawClippedBorder = (
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -1393,7 +1383,6 @@ function App() {
       ctx.putImageData(imageData, dx, dy)
     }
 
-    drawEffectOverlays(ctx, dx, dy, dw, dh, active)
   }
 
   const buildCompositeCanvas = (img: HTMLImageElement) => {

@@ -406,10 +406,6 @@ button:disabled {
   background: rgba(20, 20, 20, 0.82);
 }
 
-.effects-mobile-toggle {
-  display: none;
-}
-
 .effect-nav {
   position: static;
   z-index: 8;
@@ -466,10 +462,6 @@ button:disabled {
 }
 
 .effect-carousel {
-  display: contents;
-}
-
-.effect-carousel-row {
   display: contents;
 }
 
@@ -2239,10 +2231,6 @@ button:disabled {
   .nav-mode-group .effect-nav-item {
     flex: 1 1 0;
     font-size: 0.68rem;
-  }
-
-  .effect-carousel-row {
-    display: contents;
   }
 
   .effect-carousel {
