@@ -517,6 +517,8 @@ function App() {
   const modalIconOverlayRef = useRef<HTMLDivElement | null>(null)
   const emptyUploadInputRef = useRef<HTMLInputElement | null>(null)
   const skipNextHistoryWriteRef = useRef(false)
+  const effectNavRef = useRef<HTMLElement | null>(null)
+  const [effectNavScrollProgress, setEffectNavScrollProgress] = useState(0)
   const [textDrag, setTextDrag] = useState<
     | { mode: 'none' }
     | { mode: 'move'; id: string; startX: number; startY: number; startLayerX: number; startLayerY: number }
@@ -542,6 +544,28 @@ function App() {
     (databasePage - 1) * DATABASE_PAGE_SIZE,
     databasePage * DATABASE_PAGE_SIZE,
   )
+
+  useEffect(() => {
+    const el = effectNavRef.current
+    if (!el) return
+
+    const update = () => {
+      const max = el.scrollWidth - el.clientWidth
+      if (max <= 0) {
+        setEffectNavScrollProgress(0)
+        return
+      }
+      setEffectNavScrollProgress(el.scrollLeft / max)
+    }
+
+    update()
+    el.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    return () => {
+      el.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [hasImage, previewMode, isHistoryOpen])
 
   const currentProfile: EffectProfile = {
     effects,
@@ -2549,43 +2573,46 @@ function App() {
                   <aside className="editor-effects">
                     {hasImage && (
                       <>
-                        <nav className="effect-nav" aria-label="Effects">
-                          <button type="button" className="effect-nav-item reset effect-reset-leading" onClick={resetEffects}>
-                            <span className="effect-nav-icon" aria-hidden="true">↺</span>
-                            <span className="effect-nav-label">Reset</span>
-                          </button>
-                          <div className="nav-mode-group" role="tablist" aria-label="Preview mode">
-                            <button type="button" className={previewMode === 'single' ? 'effect-nav-item active' : 'effect-nav-item'} onClick={() => setPreviewMode('single')}>
-                              <span className="effect-nav-icon" aria-hidden="true">◻</span>
-                              <span className="effect-nav-label">Single</span>
+                        <nav ref={effectNavRef} className="effect-nav" aria-label="Effects">
+                          <section className="mobile-effect-group" aria-label="Mode controls">
+                            <button type="button" className="effect-nav-item reset effect-reset-leading" onClick={resetEffects}>
+                              <span className="effect-nav-icon" aria-hidden="true">↺</span>
+                              <span className="effect-nav-label">Reset</span>
                             </button>
-                            <button
-                              type="button"
-                              className={previewMode === 'grid2' ? 'effect-nav-item active' : 'effect-nav-item'}
-                              onClick={() => {
-                                setPreviewMode('grid2')
-                                setSelectedGridCell((prev) => Math.min(prev, 3))
-                                applyProfile(gridProfiles[Math.min(selectedGridCell, 3)])
-                              }}
-                            >
-                              <span className="effect-nav-icon" aria-hidden="true">▣</span>
-                              <span className="effect-nav-label">2x2</span>
-                            </button>
-                            <button
-                              type="button"
-                              className={previewMode === 'grid' ? 'effect-nav-item active' : 'effect-nav-item'}
-                              onClick={() => {
-                                setPreviewMode('grid')
-                                applyProfile(gridProfiles[selectedGridCell])
-                              }}
-                            >
-                              <span className="effect-nav-icon" aria-hidden="true">▦</span>
-                              <span className="effect-nav-label">3x3</span>
-                            </button>
-                          </div>
-                          <div className="effect-carousel-row">
-                            <div className="effect-carousel" role="group" aria-label="Effect carousel">
-                              {effectButtons.map((effect) => (
+                            <div className="nav-mode-group" role="tablist" aria-label="Preview mode">
+                              <button type="button" className={previewMode === 'single' ? 'effect-nav-item active' : 'effect-nav-item'} onClick={() => setPreviewMode('single')}>
+                                <span className="effect-nav-icon" aria-hidden="true">◻</span>
+                                <span className="effect-nav-label">Single</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={previewMode === 'grid2' ? 'effect-nav-item active' : 'effect-nav-item'}
+                                onClick={() => {
+                                  setPreviewMode('grid2')
+                                  setSelectedGridCell((prev) => Math.min(prev, 3))
+                                  applyProfile(gridProfiles[Math.min(selectedGridCell, 3)])
+                                }}
+                              >
+                                <span className="effect-nav-icon" aria-hidden="true">▣</span>
+                                <span className="effect-nav-label">2x2</span>
+                              </button>
+                              <button
+                                type="button"
+                                className={previewMode === 'grid' ? 'effect-nav-item active' : 'effect-nav-item'}
+                                onClick={() => {
+                                  setPreviewMode('grid')
+                                  applyProfile(gridProfiles[selectedGridCell])
+                                }}
+                              >
+                                <span className="effect-nav-icon" aria-hidden="true">▦</span>
+                                <span className="effect-nav-label">3x3</span>
+                              </button>
+                            </div>
+                          </section>
+
+                          <section className="mobile-effect-group" aria-label="Effects group 2">
+                            <div className="effect-carousel" role="group" aria-label="Effects group 2">
+                              {effectButtons.slice(0, 4).map((effect) => (
                                 <button
                                   key={effect.key}
                                   type="button"
@@ -2598,22 +2625,54 @@ function App() {
                                   <span className="effect-nav-label">{effect.label}</span>
                                 </button>
                               ))}
-
                             </div>
-                          </div>
+                          </section>
 
-                          <div className="effect-nav-sliders">
-                            <label><span>Brightness</span><input type="range" min={BRIGHTNESS_MIN} max={BRIGHTNESS_MAX} step={1} value={brightnessLevel} onChange={(e) => updateLevel('brightnessLevel', Number(e.target.value))} /></label>
-                            <label><span>Contrast</span><input type="range" min={-100} max={100} step={1} value={contrastLevel} onChange={(e) => updateLevel('contrastLevel', Number(e.target.value))} /></label>
-                            <label><span>Saturation</span><input type="range" min={-100} max={100} step={1} value={saturationLevel} onChange={(e) => updateLevel('saturationLevel', Number(e.target.value))} /></label>
-                            <label><span>Sharpness</span><input type="range" min={0} max={100} step={1} value={sharpnessLevel} onChange={(e) => updateLevel('sharpnessLevel', Number(e.target.value))} /></label>
-                            <label><span>Dither</span><input type="range" min={0} max={100} step={1} value={ditherLevel} onChange={(e) => updateLevel('ditherLevel', Number(e.target.value))} /></label>
-                            <label><span>Pixelate</span><input type="range" min={0} max={PIXELATE_MAX} step={1} value={pixelateLevel} onChange={(e) => updateLevel('pixelateLevel', Number(e.target.value))} /></label>
-                            <label><span>Mosaic Hex</span><input type="range" min={0} max={MOSAIC_HEX_MAX} step={1} value={mosaicHexLevel} onChange={(e) => updateLevel('mosaicHexLevel', Number(e.target.value))} /></label>
-                            <label><span>Glitch</span><input type="range" min={0} max={GLITCH_MAX} step={1} value={glitchLevel} onChange={(e) => updateLevel('glitchLevel', Number(e.target.value))} /></label>
-                            <label><span>Line Art</span><input type="range" min={0} max={100} step={1} value={lineArtLevel} onChange={(e) => updateLevel('lineArtLevel', Number(e.target.value))} /></label>
-                          </div>
+                          <section className="mobile-effect-group" aria-label="Effects group 3">
+                            <div className="effect-carousel" role="group" aria-label="Effects group 3">
+                              {effectButtons.slice(4).map((effect) => (
+                                <button
+                                  key={effect.key}
+                                  type="button"
+                                  className={effects[effect.key] ? 'effect-nav-item active' : 'effect-nav-item'}
+                                  onClick={() => toggleEffect(effect.key)}
+                                  title={effect.label}
+                                  aria-pressed={effects[effect.key]}
+                                >
+                                  <span className="effect-nav-icon" aria-hidden="true">{effect.icon}</span>
+                                  <span className="effect-nav-label">{effect.label}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </section>
+
+                          <section className="mobile-effect-group slider-group" aria-label="Adjustments group 4">
+                            <div className="effect-nav-sliders">
+                              <label><span>Brightness</span><input type="range" min={BRIGHTNESS_MIN} max={BRIGHTNESS_MAX} step={1} value={brightnessLevel} onChange={(e) => updateLevel('brightnessLevel', Number(e.target.value))} /></label>
+                              <label><span>Contrast</span><input type="range" min={-100} max={100} step={1} value={contrastLevel} onChange={(e) => updateLevel('contrastLevel', Number(e.target.value))} /></label>
+                              <label><span>Saturation</span><input type="range" min={-100} max={100} step={1} value={saturationLevel} onChange={(e) => updateLevel('saturationLevel', Number(e.target.value))} /></label>
+                            </div>
+                          </section>
+
+                          <section className="mobile-effect-group slider-group" aria-label="Adjustments group 5">
+                            <div className="effect-nav-sliders">
+                              <label><span>Sharpness</span><input type="range" min={0} max={100} step={1} value={sharpnessLevel} onChange={(e) => updateLevel('sharpnessLevel', Number(e.target.value))} /></label>
+                              <label><span>Dither</span><input type="range" min={0} max={100} step={1} value={ditherLevel} onChange={(e) => updateLevel('ditherLevel', Number(e.target.value))} /></label>
+                              <label><span>Pixelate</span><input type="range" min={0} max={PIXELATE_MAX} step={1} value={pixelateLevel} onChange={(e) => updateLevel('pixelateLevel', Number(e.target.value))} /></label>
+                            </div>
+                          </section>
+
+                          <section className="mobile-effect-group slider-group" aria-label="Adjustments group 6">
+                            <div className="effect-nav-sliders">
+                              <label><span>Mosaic Hex</span><input type="range" min={0} max={MOSAIC_HEX_MAX} step={1} value={mosaicHexLevel} onChange={(e) => updateLevel('mosaicHexLevel', Number(e.target.value))} /></label>
+                              <label><span>Glitch</span><input type="range" min={0} max={GLITCH_MAX} step={1} value={glitchLevel} onChange={(e) => updateLevel('glitchLevel', Number(e.target.value))} /></label>
+                              <label><span>Line Art</span><input type="range" min={0} max={100} step={1} value={lineArtLevel} onChange={(e) => updateLevel('lineArtLevel', Number(e.target.value))} /></label>
+                            </div>
+                          </section>
                         </nav>
+                        <div className="effect-nav-progress" aria-hidden="true">
+                          <span style={{ transform: `translateX(${effectNavScrollProgress * 100}%)` }} />
+                        </div>
                       </>
                     )}
                   </aside>
