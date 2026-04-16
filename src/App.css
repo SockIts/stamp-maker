@@ -541,7 +541,7 @@ button:disabled {
 }
 
 .empty-stamp-shell {
-  width: min(38vw, 175px);
+  width: min(54vw, 250px);
   aspect-ratio: 1;
   background: #f0e7cf;
   border-radius: 0;
@@ -583,17 +583,7 @@ button:disabled {
   gap: 8px;
   color: #2a3140;
   font-weight: 300;
-  font-size: 0.82rem;
   text-align: center;
-}
-
-.empty-stamp-cta span {
-  max-width: 72%;
-  margin: 0 auto;
-  line-height: 1.25;
-  white-space: normal;
-  overflow-wrap: break-word;
-  word-break: normal;
 }
 
 
@@ -2681,6 +2671,11 @@ button:disabled {
 
   .empty-stamp-cta span {
     max-width: 68%;
+    margin: 0 auto;
+    line-height: 1.25;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: normal;
   }
 
   .url-import-inline {
