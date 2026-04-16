@@ -2192,8 +2192,7 @@ button:disabled {
     box-sizing: border-box;
     scroll-snap-align: start;
     scroll-snap-stop: always;
-    overflow-x: auto;
-    overflow-y: hidden;
+    overflow: hidden;
     white-space: nowrap;
   }
 
