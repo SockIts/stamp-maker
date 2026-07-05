@@ -107,10 +107,14 @@ const jsonFetch = async <T>(url: string, init?: RequestInit): Promise<T> => {
     },
   })
 
-  const data = (await response.json().catch(() => ({}))) as ApiResponse<T> | T
+  const body = await response.text()
+  const data = (body ? tryParseJson<ApiResponse<T> | T>(body) : {}) as ApiResponse<T> | T
   if (!response.ok) {
-    const message = typeof data === 'object' && data && 'error' in data ? String(data.error) : response.statusText
-    throw new Error(message || `Request failed with ${response.status}`)
+    const message = typeof data === 'object' && data && 'error' in data ? String(data.error) : ''
+    const fallback = response.status === 502
+      ? 'ACME testnet gateway returned 502 Bad Gateway'
+      : response.statusText
+    throw new Error(message || fallback || `Request failed with ${response.status}`)
   }
   if (typeof data === 'object' && data && 'error' in data && data.error) {
     throw new Error(data.error)
@@ -118,6 +122,14 @@ const jsonFetch = async <T>(url: string, init?: RequestInit): Promise<T> => {
   if (typeof data === 'object' && data && 'result' in data && data.result !== undefined) return data.result as T
   if (typeof data === 'object' && data && 'data' in data && data.data !== undefined) return data.data as T
   return data as T
+}
+
+const tryParseJson = <T,>(body: string): T | Record<string, never> => {
+  try {
+    return JSON.parse(body) as T
+  } catch {
+    return {}
+  }
 }
 
 const base64ToHex = (base64: string) => {
