@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import './App.css'
+import {
+  connectUniSat,
+  mintStampOnAcme,
+  normalizeAcmeAssetRef,
+  normalizeAcmeAssetRefList,
+  validateAcmeMintForm,
+  type AcmeMintForm,
+  type AcmeMintStatus,
+  type AcmeStorageType,
+  type AcmeWalletState,
+} from './acmeMint'
 import { fetchSharedStamps, isSharedDatabaseConfigured, publishSharedStamp } from './sharedDatabase'
 
 type CropRect = {
@@ -26,6 +37,8 @@ type DragMode =
 type Preset = 'square' | 'portrait' | 'landscape' | 'filled' | 'expand'
 
 type PreviewMode = 'single' | 'grid' | 'grid2'
+
+type RenderSizePct = 100 | 75 | 50 | 25
 
 type StampItem = {
   id: string
@@ -114,6 +127,150 @@ type DatabaseStamp = {
   src: string
   createdAt: number
   wallColor?: string
+}
+
+const ACME_STORAGE_OPTIONS: { key: AcmeStorageType; title: string; detail: string }[] = [
+  { key: 'utxo', title: 'UTXO', detail: 'Fully on-chain spendable outputs, max 64KB' },
+  { key: 'opreturn', title: 'OP_RETURN', detail: 'On-chain multi-output encoding, max 99KB' },
+  { key: 'witness', title: 'Witness', detail: 'Taproot witness data, max 400KB' },
+  { key: 'arweave', title: 'Arweave', detail: 'Permanent off-chain storage' },
+]
+
+const ACME_MAX_UTXO_SIZE = 64 * 1024
+const ACME_MAX_OPRETURN_SIZE = 99 * 1024
+const ACME_MAX_WITNESS_SIZE = 400 * 1024
+const RENDER_SIZE_OPTIONS: RenderSizePct[] = [100, 75, 50, 25]
+
+const DEFAULT_ACME_FORM: AcmeMintForm = {
+  assetName: '',
+  storageType: 'witness',
+  artistName: '',
+  collectionName: 'STAMPS',
+  additionalAxons: [],
+  tags: 'artwork, stamp, one-of-one',
+  description: '',
+  feeRate: 5,
+  locked: false,
+}
+
+const DEFAULT_ACME_WALLET: AcmeWalletState = {
+  connected: false,
+  connecting: false,
+  address: null,
+  publicKey: null,
+  network: null,
+  balance: null,
+  error: null,
+}
+
+type AcmeCreateSection = 'basic' | 'file' | 'identity' | 'fee'
+
+const ACME_RELATIONSHIP_OPTIONS = [
+  { rel: 'derivative', label: 'Derivative' },
+  { rel: 'source', label: 'Source' },
+  { rel: 'parent', label: 'Parent' },
+  { rel: 'sibling', label: 'Sibling' },
+  { rel: 'version', label: 'Version' },
+  { rel: 'reply', label: 'Reply' },
+  { rel: 'notarizes', label: 'Notarizes' },
+  { rel: 'item', label: 'Item' },
+  { rel: 'link', label: 'Link' },
+]
+
+const ACME_TAG_OPTIONS = [
+  'artwork',
+  'certificate',
+  'document',
+  'music',
+  'video',
+  '3d',
+  'game-asset',
+  'ticket',
+  'membership',
+  'animated',
+  'interactive',
+  'generative',
+  'ai-generated',
+  'nsfw',
+  'genesis',
+  'verified',
+  'featured',
+  'limited',
+  'one-of-one',
+  'burnable',
+  'upgradeable',
+  'reveal-pending',
+]
+
+const formatBytes = (bytes: number) => {
+  if (!bytes) return 'Not selected'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const estimateAcmeCost = (dataSize: number, tier: AcmeStorageType, feeRate: number) => {
+  const baseSize = 200
+  let txSize = baseSize
+  let extraFee = 0
+
+  if (tier === 'utxo') {
+    const chunks = Math.ceil((dataSize + 2) / 32)
+    txSize += chunks * 34
+    extraFee = chunks * 330
+  } else if (tier === 'witness') {
+    txSize += Math.ceil(dataSize / 4) + 50
+  } else if (tier === 'opreturn') {
+    txSize += dataSize + 10
+  } else {
+    txSize += 100
+    const mb = 1024 * 1024
+    if (dataSize < 10 * mb) extraFee = 330
+    else if (dataSize < 50 * mb) extraFee = 660
+    else if (dataSize < 100 * mb) extraFee = 2000
+    else extraFee = 2000 + Math.floor(dataSize / (100 * mb)) * 2000
+  }
+
+  const total = txSize * Math.max(1, feeRate || 1) + extraFee
+  if (total >= 1_000_000) return `${(total / 1_000_000).toFixed(2)}M sats`
+  if (total >= 1000) return `${(total / 1000).toFixed(1)}K sats`
+  return `${Math.round(total).toLocaleString()} sats`
+}
+
+const getDataUrlBytes = (dataUrl: string) => {
+  const base64 = dataUrl.split(',')[1] ?? ''
+  return Math.floor((base64.length * 3) / 4)
+}
+
+const getAcmeStorageLabel = (storageType: AcmeStorageType) => {
+  if (storageType === 'opreturn') return 'OP_RETURN'
+  if (storageType === 'arweave') return 'Arweave'
+  if (storageType === 'utxo') return 'UTXO'
+  return 'Witness'
+}
+
+const getAcmeStorageForBytes = (bytes: number): AcmeStorageType => {
+  if (bytes <= ACME_MAX_UTXO_SIZE) return 'utxo'
+  if (bytes <= ACME_MAX_OPRETURN_SIZE) return 'opreturn'
+  if (bytes <= ACME_MAX_WITNESS_SIZE) return 'witness'
+  return 'arweave'
+}
+
+const buildAcmeJsonPreview = (form: AcmeMintForm) => {
+  const tags = form.tags
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+  return {
+    name: form.assetName || 'Asset Name',
+    description: form.description || 'Created with Stamp Maker.',
+    artist: normalizeAcmeAssetRef(form.artistName) || undefined,
+    collections: normalizeAcmeAssetRefList(form.collectionName),
+    relationships: form.additionalAxons
+      .map((axon) => ({ rel: axon.rel.trim(), ref: normalizeAcmeAssetRef(axon.ref) }))
+      .filter((axon) => axon.rel && axon.ref),
+    tags,
+  }
 }
 
 const MIN_CROP_SIZE = 24
@@ -463,7 +620,8 @@ function App() {
   const [modalEdits, setModalEdits] = useState<ModalStampEdits>(createDefaultModalEdits)
   const [modalStampSrc, setModalStampSrc] = useState<string>('')
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null)
-  const [exportSizePct, setExportSizePct] = useState<100 | 75 | 50 | 25>(100)
+  const [exportSizePct, setExportSizePct] = useState<RenderSizePct>(100)
+  const [acmeMintSizePct, setAcmeMintSizePct] = useState<RenderSizePct>(100)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [imageAdjustDrag, setImageAdjustDrag] = useState<
     | { mode: 'none' }
@@ -506,6 +664,16 @@ function App() {
   const [databasePanelHeight, setDatabasePanelHeight] = useState(780)
   const [selectedDatabaseStamp, setSelectedDatabaseStamp] = useState<DatabaseStamp | null>(null)
   const [databasePage, setDatabasePage] = useState(1)
+  const [acmeWallet, setAcmeWallet] = useState<AcmeWalletState>(DEFAULT_ACME_WALLET)
+  const [isAcmeFormOpen, setIsAcmeFormOpen] = useState(false)
+  const [acmeForm, setAcmeForm] = useState<AcmeMintForm>(DEFAULT_ACME_FORM)
+  const [acmeExpandedSections, setAcmeExpandedSections] = useState<Set<AcmeCreateSection>>(new Set(['basic', 'file', 'identity', 'fee']))
+  const [acmeShowJson, setAcmeShowJson] = useState(false)
+  const [acmePreviewImage, setAcmePreviewImage] = useState('')
+  const [acmeCustomTag, setAcmeCustomTag] = useState('')
+  const [acmeMintStatus, setAcmeMintStatus] = useState<AcmeMintStatus>('idle')
+  const [acmeNotice, setAcmeNotice] = useState('')
+  const [acmeTxid, setAcmeTxid] = useState<string | null>(null)
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
@@ -544,6 +712,28 @@ function App() {
     (databasePage - 1) * DATABASE_PAGE_SIZE,
     databasePage * DATABASE_PAGE_SIZE,
   )
+  const normalizedAcmeAssetName = acmeForm.assetName.trim().toUpperCase()
+  const acmeFormValidationError = validateAcmeMintForm(acmeForm)
+  const acmePreviewBytes = acmePreviewImage ? getDataUrlBytes(acmePreviewImage) : 0
+  const acmePreviewJson = buildAcmeJsonPreview(acmeForm)
+  const acmePreviewJsonString = JSON.stringify(acmePreviewJson, null, 2)
+  const acmeMetadataSizePct = Math.min(100, Math.round((acmePreviewJsonString.length / 5000) * 100))
+  const acmeSelectedTags = acmeForm.tags
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+  const canMintOnAcme =
+    acmeWallet.connected &&
+    !acmeFormValidationError &&
+    acmeMintStatus !== 'composing' &&
+    acmeMintStatus !== 'signing' &&
+    acmeMintStatus !== 'broadcasting'
+
+  useEffect(() => {
+    if (!isAcmeFormOpen || !acmePreviewBytes) return
+    const selectedStorage = getAcmeStorageForBytes(acmePreviewBytes)
+    setAcmeForm((prev) => (prev.storageType === selectedStorage ? prev : { ...prev, storageType: selectedStorage }))
+  }, [acmePreviewBytes, isAcmeFormOpen])
 
   useEffect(() => {
     const el = effectNavRef.current
@@ -767,7 +957,6 @@ function App() {
 
       const saved = await getSubmittedStamps()
       setDatabaseStamps(saved)
-      setDatabaseNotice('Shared DB not configured yet. Showing local stamps only.')
     } catch {
       setDatabaseNotice('Could not load database stamps.')
     }
@@ -792,12 +981,146 @@ function App() {
           wallColor: modalEdits.wallColor,
         })
         await refreshDatabaseStamps()
-        setDatabaseNotice('Shared DB not configured. Saved locally.')
+        setDatabaseNotice('Saved to local database.')
       }
     } catch {
-      setDatabaseNotice('Could not submit stamp to database.')
+      setDatabaseNotice('Could not save stamp to database.')
     } finally {
       setIsSubmittingToDatabase(false)
+    }
+  }
+
+  const connectAcmeWallet = async () => {
+    setAcmeWallet((prev) => ({ ...prev, connecting: true, error: null }))
+    setAcmeNotice('')
+    try {
+      const wallet = await connectUniSat()
+      setAcmeWallet(wallet)
+      setAcmeNotice('UniSat connected.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not connect UniSat.'
+      setAcmeWallet((prev) => ({ ...prev, connecting: false, error: message }))
+      setAcmeNotice(message)
+    }
+  }
+
+  const disconnectAcmeWallet = () => {
+    setAcmeWallet(DEFAULT_ACME_WALLET)
+    setAcmeMintStatus('idle')
+    setAcmeNotice('UniSat disconnected.')
+  }
+
+  const openAcmeMintForm = () => {
+    if (!selectedStamp) return
+    setIsAcmeFormOpen(true)
+    setAcmeMintStatus('idle')
+    setAcmeTxid(null)
+    setAcmeNotice('')
+    setAcmeForm((prev) => ({
+      ...prev,
+      assetName: prev.assetName || `STAMP${Date.now().toString().slice(-6)}`,
+      collectionName: prev.collectionName || 'STAMPS',
+      description: prev.description || 'Created with Stamp Maker.',
+    }))
+  }
+
+  const closeAcmeMintForm = () => {
+    setIsAcmeFormOpen(false)
+    setAcmeShowJson(false)
+  }
+
+  const toggleAcmeSection = (section: AcmeCreateSection) => {
+    setAcmeExpandedSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(section)) next.delete(section)
+      else next.add(section)
+      return next
+    })
+  }
+
+  const addAcmeRelationship = (rel: string) => {
+    setAcmeForm((prev) => ({
+      ...prev,
+      additionalAxons: [
+        ...prev.additionalAxons,
+        { id: `axon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, rel, ref: '' },
+      ],
+    }))
+  }
+
+  const setAcmeTags = (tags: string[]) => {
+    const normalizedTags = tags
+      .map((tag) => tag.trim().toLowerCase().replace(/\s+/g, '-'))
+      .filter(Boolean)
+    setAcmeForm((prev) => ({ ...prev, tags: Array.from(new Set(normalizedTags)).join(', ') }))
+  }
+
+  const toggleAcmeTag = (tag: string) => {
+    const normalizedTag = tag.trim().toLowerCase().replace(/\s+/g, '-')
+    if (!normalizedTag) return
+    if (acmeSelectedTags.includes(normalizedTag)) {
+      setAcmeTags(acmeSelectedTags.filter((item) => item !== normalizedTag))
+      return
+    }
+    setAcmeTags([...acmeSelectedTags, normalizedTag])
+  }
+
+  const addAcmeCustomTag = () => {
+    const normalizedTag = acmeCustomTag.trim().toLowerCase().replace(/\s+/g, '-')
+    if (!normalizedTag) return
+    setAcmeTags([...acmeSelectedTags, normalizedTag])
+    setAcmeCustomTag('')
+  }
+
+  const mintSelectedStampOnAcme = async () => {
+    if (!selectedStamp) return
+
+    const validationError = validateAcmeMintForm(acmeForm)
+    if (validationError) {
+      setAcmeMintStatus('error')
+      setAcmeNotice(validationError)
+      return
+    }
+
+    if (!acmeWallet.connected) {
+      setAcmeMintStatus('error')
+      setAcmeNotice('Connect UniSat before minting.')
+      return
+    }
+
+    setAcmeMintStatus('composing')
+    setAcmeNotice('Preparing stamp image and composing ACME transaction...')
+    setAcmeTxid(null)
+
+    try {
+      const imageDataUrl = await renderModalSceneImage(acmeMintSizePct)
+      if (!imageDataUrl) throw new Error('Could not render the stamp image.')
+
+      setAcmeMintStatus('signing')
+      setAcmeNotice('Waiting for UniSat signature...')
+      const txid = await mintStampOnAcme({
+        form: {
+          ...acmeForm,
+          assetName: normalizedAcmeAssetName,
+          artistName: normalizeAcmeAssetRef(acmeForm.artistName),
+          collectionName: normalizeAcmeAssetRefList(acmeForm.collectionName).join(', '),
+          additionalAxons: acmeForm.additionalAxons.map((axon) => ({
+            ...axon,
+            rel: axon.rel.trim().toLowerCase(),
+            ref: normalizeAcmeAssetRef(axon.ref),
+          })),
+        },
+        imageDataUrl,
+        wallet: acmeWallet,
+      })
+
+      setAcmeMintStatus('success')
+      setAcmeTxid(txid)
+      setAcmeNotice('Mint transaction broadcast. ACME will reveal the stamp after the commit confirms.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not mint this stamp on ACME.'
+      setAcmeMintStatus('error')
+      setAcmeNotice(message)
     }
   }
 
@@ -2114,13 +2437,15 @@ function App() {
     }
   }, [imageAdjustDrag])
 
-  const renderEditedStamp = (src: string, edits: ModalStampEdits, includeText = true) =>
+  const renderEditedStamp = (src: string, edits: ModalStampEdits, includeText = true, outputScale = 1) =>
     new Promise<string>((resolve) => {
       const img = new Image()
       img.onload = () => {
         const canvas = document.createElement('canvas')
-        canvas.width = img.naturalWidth || img.width
-        canvas.height = img.naturalHeight || img.height
+        const sourceWidth = img.naturalWidth || img.width
+        const sourceHeight = img.naturalHeight || img.height
+        canvas.width = Math.max(1, Math.round(sourceWidth * outputScale))
+        canvas.height = Math.max(1, Math.round(sourceHeight * outputScale))
         const ctx = canvas.getContext('2d')
         if (!ctx) {
           resolve(src)
@@ -2252,6 +2577,26 @@ function App() {
     })
 
   useEffect(() => {
+    if (!selectedStamp || !isAcmeFormOpen) {
+      setAcmePreviewImage('')
+      return
+    }
+
+    let cancelled = false
+    renderModalSceneImage(acmeMintSizePct)
+      .then((src) => {
+        if (!cancelled) setAcmePreviewImage(src)
+      })
+      .catch(() => {
+        if (!cancelled) setAcmePreviewImage('')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedStamp, modalEdits, isAcmeFormOpen, acmeMintSizePct])
+
+  useEffect(() => {
     if (!selectedStamp) {
       setModalStampSrc('')
       return
@@ -2276,8 +2621,13 @@ function App() {
       setModalEdits((prev) => ({ ...prev, activeIconId: prev.iconLayers[0].id }))
       return
     }
-    renderEditedStamp(selectedStamp.stamp.src, modalEdits, false).then(setModalStampSrc)
-  }, [selectedStamp, modalEdits])
+    renderEditedStamp(
+      selectedStamp.stamp.src,
+      modalEdits,
+      false,
+      isAcmeFormOpen ? acmeMintSizePct / 100 : 1,
+    ).then(setModalStampSrc)
+  }, [selectedStamp, modalEdits, isAcmeFormOpen, acmeMintSizePct])
 
   useEffect(() => {
     if (!selectedStamp) return
@@ -2371,13 +2721,13 @@ function App() {
 
     const drawPerforationHoles = () => {
       const perf = Math.max(4, modalEdits.perforationSize * scale)
-      const holeRadius = perf * 0.38
-      const holeStep = perf * 1.18
+      const holeRadius = perf * 0.36
+      const holeStep = perf
 
       if (transparentBackground) {
         ctx.save()
         ctx.globalCompositeOperation = 'destination-out'
-        for (let x = stampX; x <= stampX + stampW; x += holeStep) {
+        for (let x = stampX + perf / 2; x <= stampX + stampW; x += holeStep) {
           ctx.beginPath()
           ctx.arc(x, stampY, holeRadius, 0, Math.PI * 2)
           ctx.fill()
@@ -2385,7 +2735,7 @@ function App() {
           ctx.arc(x, stampY + stampH, holeRadius, 0, Math.PI * 2)
           ctx.fill()
         }
-        for (let y = stampY; y <= stampY + stampH; y += holeStep) {
+        for (let y = stampY + perf / 2; y <= stampY + stampH; y += holeStep) {
           ctx.beginPath()
           ctx.arc(stampX, y, holeRadius, 0, Math.PI * 2)
           ctx.fill()
@@ -2398,7 +2748,7 @@ function App() {
       }
 
       ctx.fillStyle = modalEdits.wallColor
-      for (let x = stampX; x <= stampX + stampW; x += holeStep) {
+      for (let x = stampX + perf / 2; x <= stampX + stampW; x += holeStep) {
         ctx.beginPath()
         ctx.arc(x, stampY, holeRadius, 0, Math.PI * 2)
         ctx.fill()
@@ -2406,7 +2756,7 @@ function App() {
         ctx.arc(x, stampY + stampH, holeRadius, 0, Math.PI * 2)
         ctx.fill()
       }
-      for (let y = stampY; y <= stampY + stampH; y += holeStep) {
+      for (let y = stampY + perf / 2; y <= stampY + stampH; y += holeStep) {
         ctx.beginPath()
         ctx.arc(stampX, y, holeRadius, 0, Math.PI * 2)
         ctx.fill()
@@ -2891,7 +3241,7 @@ function App() {
       {selectedStamp && (
         <div className="lightbox" role="dialog" aria-modal="true" onClick={() => void closeModal()}>
           <div
-            className="lightbox-content"
+            className={isAcmeFormOpen ? 'lightbox-content acme-create-shell' : 'lightbox-content'}
             style={{
               '--wall-bg': modalEdits.wallColor,
               '--stamp-paper': modalEdits.stampColor,
@@ -2911,6 +3261,8 @@ function App() {
 
             <div className="lightbox-editor">
               <div className="editor-settings">
+              {!isAcmeFormOpen ? (
+                <>
               <div className="editor-actions">
                 <button
                   type="button"
@@ -3143,14 +3495,425 @@ function App() {
                 onClick={() => void submitStampToDatabase()}
                 disabled={isSubmittingToDatabase}
               >
-                {isSubmittingToDatabase ? 'Submitting…' : 'Submit'}
+                {isSubmittingToDatabase ? 'Saving...' : 'Save to local Database'}
               </button>
               {databaseNotice && <p className="database-notice">{databaseNotice}</p>}
+              <button type="button" className="acme-mint-open-btn" onClick={openAcmeMintForm}>
+                Mint on ACME (testnet4)
+              </button>
+              <p className="acme-wallet-note">Requires UniSat wallet connection.</p>
+                </>
+              ) : (
+                <div className="acme-create-form">
+                  <div className="acme-create-title">
+                    <button type="button" className="acme-back-btn" onClick={closeAcmeMintForm}>
+                      Back
+                    </button>
+                    <div>
+                      <h3>Create Asset</h3>
+                      <p>Create new assets on the blockchain</p>
+                    </div>
+                  </div>
+
+                  <section className="acme-create-section">
+                    <button type="button" className="acme-section-toggle" onClick={() => toggleAcmeSection('basic')}>
+                      <span>Asset Name <b>*</b></span>
+                      <span>{acmeExpandedSections.has('basic') ? '⌃' : '⌄'}</span>
+                    </button>
+                    {acmeExpandedSections.has('basic') && (
+                      <div className="acme-section-body">
+                        <label>
+                          On-chain Identifier *
+                          <input
+                            value={acmeForm.assetName}
+                            placeholder="MYASSET"
+                            maxLength={16}
+                            onChange={(e) => setAcmeForm((prev) => ({ ...prev, assetName: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') }))}
+                          />
+                        </label>
+                        <div className="acme-inline-actions">
+                          <button type="button" onClick={() => setAcmeForm((prev) => ({ ...prev, assetName: `STAMP${Date.now().toString().slice(-6)}` }))}>
+                            Fun Name
+                          </button>
+                          <button type="button" onClick={() => setAcmeForm((prev) => ({ ...prev, assetName: `A${crypto.randomUUID().replace(/-/g, '').slice(0, 15).toUpperCase()}` }))}>
+                            Random ID
+                          </button>
+                          <label className="acme-lock-inline">
+                            <input
+                              type="checkbox"
+                              checked={acmeForm.locked}
+                              onChange={(e) => setAcmeForm((prev) => ({ ...prev, locked: e.target.checked }))}
+                            />
+                            Lock Supply
+                          </label>
+                        </div>
+                        <p className="acme-field-help">3-16 characters. Uppercase letters (A-Z) and numbers (0-9). Must start with a letter.</p>
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="acme-create-section">
+                    <button type="button" className="acme-section-toggle" onClick={() => toggleAcmeSection('file')}>
+                      <span>Art Storage</span>
+                      <span>{acmeExpandedSections.has('file') ? '⌃' : '⌄'}</span>
+                    </button>
+                    {acmeExpandedSections.has('file') && (
+                      <div className="acme-section-body">
+                        <div className="acme-storage-grid" aria-label="Asset storage">
+                          {ACME_STORAGE_OPTIONS.map((option) => (
+                            <button
+                              type="button"
+                              key={option.key}
+                              className={acmeForm.storageType === option.key ? 'selected' : ''}
+                              onClick={() => setAcmeForm((prev) => ({ ...prev, storageType: option.key }))}
+                            >
+                              <strong>{option.title}</strong>
+                              <span>{option.detail}</span>
+                              {acmePreviewBytes > 0 && getAcmeStorageForBytes(acmePreviewBytes) === option.key && <small>Recommended for {formatBytes(acmePreviewBytes)}</small>}
+                              {acmePreviewBytes > 0 && <em>{estimateAcmeCost(acmePreviewBytes, option.key, acmeForm.feeRate)}</em>}
+                            </button>
+                          ))}
+                        </div>
+                        <label>
+                          Mint resolution
+                          <select value={acmeMintSizePct} onChange={(e) => setAcmeMintSizePct(Number(e.target.value) as RenderSizePct)}>
+                            {RENDER_SIZE_OPTIONS.map((size) => (
+                              <option key={size} value={size}>
+                                {size === 100 ? 'Full (100%)' : `${size}%`}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="acme-field-help">The preview updates to match the selected mint image resolution.</span>
+                        </label>
+                        {acmeForm.storageType === 'arweave' && (
+                          <div className="acme-storage-warning">
+                            <strong>Large files notice:</strong> Arweave supports large files. For large files, processing may take several minutes. Do not refresh or leave this page during minting.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="acme-create-section">
+                    <button type="button" className="acme-section-toggle" onClick={() => toggleAcmeSection('identity')}>
+                      <span>Identity & Discovery</span>
+                      <span>{acmeExpandedSections.has('identity') ? '⌃' : '⌄'}</span>
+                    </button>
+                    {acmeExpandedSections.has('identity') && (
+                      <div className="acme-section-body">
+                        <label>
+                          Artist
+                          <input
+                            value={acmeForm.artistName}
+                            placeholder="ARTISTPROFILE"
+                            onChange={(e) => setAcmeForm((prev) => ({ ...prev, artistName: e.target.value.toUpperCase() }))}
+                          />
+                        </label>
+                        <label>
+                          Collection
+                          <input
+                            value={acmeForm.collectionName}
+                            placeholder="STAMPS, COLLECTIONNAME"
+                            onChange={(e) => setAcmeForm((prev) => ({ ...prev, collectionName: e.target.value.toUpperCase() }))}
+                          />
+                          <span className="acme-field-help">Prefilled with STAMPS. Add more collections with commas.</span>
+                        </label>
+                        {acmeForm.additionalAxons.map((axon) => (
+                          <div className="acme-axon-row" key={axon.id}>
+                            <input
+                              value={axon.rel}
+                              placeholder="type"
+                              onChange={(e) => {
+                                const rel = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')
+                                setAcmeForm((prev) => ({
+                                  ...prev,
+                                  additionalAxons: prev.additionalAxons.map((item) => item.id === axon.id ? { ...item, rel } : item),
+                                }))
+                              }}
+                            />
+                            <input
+                              value={axon.ref}
+                              placeholder="Asset name or URI"
+                              onChange={(e) => {
+                                const ref = e.target.value.toUpperCase()
+                                setAcmeForm((prev) => ({
+                                  ...prev,
+                                  additionalAxons: prev.additionalAxons.map((item) => item.id === axon.id ? { ...item, ref } : item),
+                                }))
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setAcmeForm((prev) => ({
+                                ...prev,
+                                additionalAxons: prev.additionalAxons.filter((item) => item.id !== axon.id),
+                              }))}
+                            >
+                              -
+                            </button>
+                          </div>
+                        ))}
+                        <div className="acme-relationship-add">
+                          <select value="" onChange={(e) => { if (e.target.value) addAcmeRelationship(e.target.value) }}>
+                            <option value="">+ Add relationship...</option>
+                            {ACME_RELATIONSHIP_OPTIONS.map((item) => (
+                              <option key={item.rel} value={item.rel}>{item.label}</option>
+                            ))}
+                          </select>
+                          <button type="button" onClick={() => addAcmeRelationship('custom')}>Custom</button>
+                        </div>
+                        <div className="acme-tags-field">
+                          <div className="acme-tags-label">
+                            <span>Tags</span>
+                            <small>{acmeSelectedTags.length} / 20</small>
+                          </div>
+                          {acmeSelectedTags.length > 0 && (
+                            <div className="acme-selected-tags" aria-label="Selected tags">
+                              {acmeSelectedTags.map((tag) => (
+                                <button type="button" key={tag} onClick={() => toggleAcmeTag(tag)}>
+                                  {tag}
+                                  <span aria-hidden="true">×</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <div className="acme-tag-options" aria-label="Suggested tags">
+                            {ACME_TAG_OPTIONS.map((tag) => (
+                              <button
+                                type="button"
+                                key={tag}
+                                className={acmeSelectedTags.includes(tag) ? 'selected' : ''}
+                                onClick={() => toggleAcmeTag(tag)}
+                              >
+                                {tag}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="acme-custom-tag-row">
+                            <input
+                              value={acmeCustomTag}
+                              placeholder="custom-tag"
+                              onChange={(e) => setAcmeCustomTag(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  addAcmeCustomTag()
+                                }
+                              }}
+                            />
+                            <button type="button" onClick={addAcmeCustomTag}>+</button>
+                          </div>
+                        </div>
+                        <label>
+                          Description
+                          <textarea
+                            value={acmeForm.description}
+                            rows={3}
+                            maxLength={250}
+                            placeholder="Describe your asset..."
+                            onChange={(e) => setAcmeForm((prev) => ({ ...prev, description: e.target.value }))}
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="acme-create-section">
+                    <button type="button" className="acme-section-toggle" onClick={() => toggleAcmeSection('fee')}>
+                      <span>Transaction Fee</span>
+                      <span>{acmeExpandedSections.has('fee') ? '⌃' : '⌄'}</span>
+                    </button>
+                    {acmeExpandedSections.has('fee') && (
+                      <div className="acme-section-body">
+                        <div className="acme-fee-presets">
+                          {[2, 5, 10].map((rate) => (
+                            <button
+                              type="button"
+                              key={rate}
+                              className={acmeForm.feeRate === rate ? 'selected' : ''}
+                              onClick={() => setAcmeForm((prev) => ({ ...prev, feeRate: rate }))}
+                            >
+                              <strong>{rate === 2 ? 'Economy' : rate === 5 ? 'Standard' : 'Priority'}</strong>
+                              <span>{rate} sat/vB</span>
+                            </button>
+                          ))}
+                        </div>
+                        <label>
+                          Custom rate (sat/vB)
+                          <input
+                            type="number"
+                            min={1}
+                            value={acmeForm.feeRate}
+                            onChange={(e) => setAcmeForm((prev) => ({ ...prev, feeRate: Math.max(1, Number(e.target.value) || 1) }))}
+                          />
+                        </label>
+                        <div className="acme-fee-breakdown">
+                          <span>Transaction size</span><b>~{acmePreviewBytes ? Math.max(300, Math.round(acmePreviewBytes / 4) + 250).toLocaleString() : 300} vB</b>
+                          <span>Fee rate</span><b>{acmeForm.feeRate} sat/vB</b>
+                          <span>Storage</span><b>{getAcmeStorageLabel(acmeForm.storageType)}</b>
+                          <span>Total Fee</span><b>{estimateAcmeCost(acmePreviewBytes, acmeForm.storageType, acmeForm.feeRate)}</b>
+                        </div>
+                      </div>
+                    )}
+                  </section>
+
+                  {!acmeWallet.connected ? (
+                    <button type="button" className="acme-primary-btn" onClick={() => void connectAcmeWallet()} disabled={acmeWallet.connecting}>
+                      {acmeWallet.connecting ? 'Connecting...' : 'Connect UniSat'}
+                    </button>
+                  ) : (
+                    <div className="acme-wallet-row">
+                      <p className="acme-wallet-pill">{`${acmeWallet.address?.slice(0, 6)}...${acmeWallet.address?.slice(-4)}`}</p>
+                      <button type="button" className="acme-secondary-btn" onClick={disconnectAcmeWallet}>
+                        Disconnect
+                      </button>
+                    </div>
+                  )}
+
+                  {acmeFormValidationError && <p className="acme-notice error">{acmeFormValidationError}</p>}
+
+                  <button type="button" className="acme-primary-btn" onClick={() => void mintSelectedStampOnAcme()} disabled={!canMintOnAcme}>
+                    {acmeMintStatus === 'composing' || acmeMintStatus === 'signing' || acmeMintStatus === 'broadcasting' ? 'Minting...' : 'Create Asset'}
+                  </button>
+
+                  {acmeNotice && <p className={`acme-notice ${acmeMintStatus === 'error' ? 'error' : ''}`}>{acmeNotice}</p>}
+                  {acmeTxid && (
+                    <a className="acme-tx-link" href={`https://mempool.space/testnet4/tx/${acmeTxid}`} target="_blank" rel="noreferrer">
+                      View transaction
+                    </a>
+                  )}
+                </div>
+              )}
               </div>
 
             </div>
 
-            <div className="lightbox-preview-column" ref={modalPreviewRef}>
+            <div className={isAcmeFormOpen ? 'lightbox-preview-column acme-preview-host' : 'lightbox-preview-column'} ref={modalPreviewRef}>
+              {isAcmeFormOpen ? (
+                <>
+                <div className="acme-render-source" aria-hidden="true">
+                  <div
+                    ref={modalStampFrameRef}
+                    className={selectedStamp.stamp.preset === 'expand'
+                      ? 'stamp-frame lightbox-stamp stamp-frame-expand'
+                      : 'stamp-frame lightbox-stamp'
+                    }
+                    style={
+                      {
+                        '--stamp-ratio': String(selectedStamp.stamp.ratio),
+                        '--stamp-width-factor': '1',
+                        '--stamp-scale': '1',
+                        '--perforation-size': `${modalEdits.perforationSize}px`,
+                        '--stamp-image-padding': selectedStamp.stamp.preset === 'expand' ? '0px' : 'var(--modal-stamp-image-padding, 14px)',
+                        '--stamp-padding-top-bottom': selectedStamp.stamp.preset === 'expand' ? '0px' : 'var(--modal-stamp-padding-y, 16px)',
+                        '--stamp-padding-left-right': selectedStamp.stamp.preset === 'expand' ? '0px' : 'var(--modal-stamp-padding-x, 16px)',
+                      } as CSSProperties
+                    }
+                  >
+                    <div className="stamp-perf" aria-hidden="true" />
+                    <div className="stamp-right" aria-hidden="true" />
+                    <div className="stamp-bottom" aria-hidden="true" />
+                    <img
+                      ref={modalImageElementRef}
+                      src={modalStampSrc || selectedStamp.stamp.src}
+                      alt=""
+                      className="modal-edit-image"
+                      draggable={false}
+                    />
+                    <div className="modal-icon-overlay" ref={modalIconOverlayRef}>
+                      {modalEdits.iconLayers.map((icon) => (
+                        <div
+                          key={icon.id}
+                          data-icon-id={icon.id}
+                          className="modal-icon-layer"
+                          style={{
+                            left: `${icon.x}px`,
+                            top: `${icon.y}px`,
+                            width: `${icon.size}px`,
+                            filter: icon.inverse ? 'invert(1)' : 'none',
+                          }}
+                        >
+                          <img src={icon.src} alt="" style={{ opacity: icon.opacity / 100 }} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="acme-live-preview-card">
+                  <div className="acme-preview-head">
+                    <div>
+                      <span className="acme-live-dot" />
+                      Live Preview
+                    </div>
+                    <button type="button" onClick={() => setAcmeShowJson((prev) => !prev)}>
+                      {acmeShowJson ? 'Hide JSON' : 'Show JSON'}
+                    </button>
+                  </div>
+                  <div className="acme-preview-body">
+                    <section className="acme-preview-image-section" aria-label="Image preview">
+                      <div className="acme-preview-art">
+                        {acmePreviewImage ? (
+                          <img src={acmePreviewImage} alt={acmeForm.assetName || 'Asset preview'} />
+                        ) : (
+                          <span>Rendering preview...</span>
+                        )}
+                      </div>
+                    </section>
+                    <section className="acme-preview-info-section" aria-label="Image details preview">
+                      <div className="acme-preview-title-row">
+                        <h2>{acmeForm.assetName || 'Asset Name'}</h2>
+                        {normalizedAcmeAssetName && <p>{normalizedAcmeAssetName}</p>}
+                      </div>
+                      {acmeSelectedTags.length > 0 && (
+                        <div className="acme-preview-tags" aria-label="Asset tags">
+                          {acmeSelectedTags.slice(0, 6).map((tag) => (
+                            <span key={tag}>{tag}</span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="acme-preview-relations">
+                        <div>
+                          <small>Artist</small>
+                          <strong>{normalizeAcmeAssetRef(acmeForm.artistName) || 'Not yet assigned'}</strong>
+                        </div>
+                        <div>
+                          <small>Collection</small>
+                          <strong>{normalizeAcmeAssetRefList(acmeForm.collectionName).join(', ') || 'Not yet assigned'}</strong>
+                        </div>
+                      </div>
+                      {acmeForm.additionalAxons.some((axon) => axon.rel.trim() || axon.ref.trim()) && (
+                        <div className="acme-preview-axon-list">
+                          {acmeForm.additionalAxons.map((axon) => (
+                            <span key={axon.id}>{axon.rel || 'link'} → {normalizeAcmeAssetRef(axon.ref) || 'Reference'}</span>
+                          ))}
+                        </div>
+                      )}
+                      {acmeForm.description && <p className="acme-preview-description">{acmeForm.description}</p>}
+                      <div className="acme-preview-details">
+                        <div className="acme-preview-accordion-title">Details <span>⌃</span></div>
+                        <dl>
+                          <dt>Storage</dt><dd>{getAcmeStorageLabel(acmeForm.storageType)}</dd>
+                          <dt>Image Type</dt><dd>PNG</dd>
+                          <dt>Image Size</dt><dd>{formatBytes(acmePreviewBytes)}</dd>
+                          <dt>Resolution</dt><dd>{acmeMintSizePct === 100 ? 'Full' : `${acmeMintSizePct}%`}</dd>
+                          <dt>Locked</dt><dd>{acmeForm.locked ? 'Yes' : 'No'}</dd>
+                        </dl>
+                      </div>
+                    </section>
+                    {acmeShowJson && (
+                      <pre className="acme-json-preview">{acmePreviewJsonString}</pre>
+                    )}
+                  </div>
+                  <div className="acme-preview-footer">
+                    <span>Metadata Size</span>
+                    <div>
+                      <i><b style={{ width: `${acmeMetadataSizePct}%` }} /></i>
+                      <span>{acmeMetadataSizePct}%</span>
+                    </div>
+                  </div>
+                </div>
+                </>
+              ) : (
               <div
                 ref={modalStampFrameRef}
                 className={selectedStamp.stamp.preset === 'expand'
@@ -3236,6 +3999,7 @@ function App() {
                   </div>
                 )})}
               </div>
+              )}
             </div>
           </div>
         </div>

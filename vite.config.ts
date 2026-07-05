@@ -1,11 +1,24 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { nodePolyfills } from 'vite-plugin-node-polyfills'
+
+const API_PROXY_TARGET = process.env.VITE_API_PROXY_TARGET || 'https://testnet.acme.pics/api'
+const API_PROXY_ORIGIN = process.env.VITE_API_PROXY_ORIGIN || new URL(API_PROXY_TARGET).origin
+const ADMIN_PROXY_TARGET = process.env.VITE_ADMIN_PROXY_TARGET || API_PROXY_ORIGIN
+const API_PROXY_REWRITE_PREFIX = API_PROXY_TARGET.endsWith('/api') ? '' : '/v2'
 
 // https://vite.dev/config/
 export default defineConfig({
   base: '/stamp-maker/',
   plugins: [
     react(),
+    nodePolyfills({
+      include: ['buffer', 'process'],
+      globals: {
+        Buffer: true,
+        process: true,
+      },
+    }),
     {
       name: 'image-proxy',
       configureServer(server) {
@@ -40,4 +53,21 @@ export default defineConfig({
       },
     },
   ],
+  server: {
+    proxy: {
+      '/api/compose': {
+        target: API_PROXY_ORIGIN,
+        changeOrigin: true,
+      },
+      '/admin': {
+        target: ADMIN_PROXY_TARGET,
+        changeOrigin: true,
+      },
+      '/api': {
+        target: API_PROXY_TARGET,
+        changeOrigin: true,
+        rewrite: (proxyPath) => proxyPath.replace(/^\/api/, API_PROXY_REWRITE_PREFIX),
+      },
+    },
+  },
 })

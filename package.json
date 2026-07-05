@@ -10,8 +10,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "bitcoinjs-lib": "^7.0.1",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "vite-plugin-node-polyfills": "^0.28.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
