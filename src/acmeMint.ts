@@ -61,6 +61,20 @@ type ApiResponse<T> = {
   error?: string
 }
 
+const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '')
+
+const ACME_PUBLIC_ORIGIN =
+  (import.meta.env.VITE_ACME_PUBLIC_ORIGIN as string | undefined)?.trim() || 'https://testnet.acme.pics'
+
+const ACME_API_BASE_URL =
+  (import.meta.env.VITE_ACME_API_BASE_URL as string | undefined)?.trim() ||
+  (import.meta.env.DEV ? '' : ACME_PUBLIC_ORIGIN)
+
+const resolveAcmeUrl = (path: string) => {
+  const baseUrl = trimTrailingSlash(ACME_API_BASE_URL)
+  return baseUrl ? `${baseUrl}${path}` : path
+}
+
 type BackendUtxo = {
   txid?: string
   tx_hash?: string
@@ -297,11 +311,13 @@ export const mintStampOnAcme = async ({
   if (!wallet.address) throw new Error('Connect UniSat before minting.')
   if (!window.unisat) throw new Error('UniSat wallet is not available.')
 
-  const utxos = await jsonFetch<BackendUtxo[]>(`/admin/bitcoin/addresses/${encodeURIComponent(wallet.address)}/utxos`)
+  const utxos = await jsonFetch<BackendUtxo[]>(
+    resolveAcmeUrl(`/admin/bitcoin/addresses/${encodeURIComponent(wallet.address)}/utxos`),
+  )
   const normalizedUtxos = utxos.map(normalizeUtxo).filter((utxo): utxo is Utxo => utxo !== null)
   if (!normalizedUtxos.length) throw new Error('No spendable UTXOs found for this wallet.')
 
-  const composeResult = await jsonFetch<UnifiedArtResult>('/api/compose', {
+  const composeResult = await jsonFetch<UnifiedArtResult>(resolveAcmeUrl('/api/compose'), {
     method: 'POST',
     body: JSON.stringify({
       type: 'unified_art',
@@ -331,36 +347,32 @@ export const mintStampOnAcme = async ({
     throw new Error('ACME did not return a signable PSBT.')
   }
 
-  try {
-    await jsonFetch('/api/compose', {
-      method: 'POST',
-      body: JSON.stringify({
-        type: 'witness_art_finalize',
-        commit_txid: composeResult.commit_txid,
-        commit_vout: composeResult.commit_vout,
-        commit_value_sats: composeResult.reveal_commit_value_sats,
-        commit_output_script_hex: composeResult.reveal_commit_script_pubkey_hex,
-        witness_script_hex: composeResult.reveal_witness_script_hex,
-        reveal_secret_key_hex: composeResult.reveal_secret_key_hex,
-        internal_key_hex: composeResult.reveal_internal_key_hex,
-        merkle_root_hex: composeResult.reveal_merkle_root_hex,
-        destination: composeResult.reveal_destination_address,
-        postage_sats: composeResult.reveal_postage_sats,
-        content_hash: composeResult.content_hash,
-        asset_name: form.assetName.trim().toUpperCase(),
-        source_address: wallet.address,
-        opreturn_script_hex: composeResult.opreturn_script_hex,
-      }),
-    })
-  } catch (error) {
-    throw error
-  }
+  await jsonFetch(resolveAcmeUrl('/api/compose'), {
+    method: 'POST',
+    body: JSON.stringify({
+      type: 'witness_art_finalize',
+      commit_txid: composeResult.commit_txid,
+      commit_vout: composeResult.commit_vout,
+      commit_value_sats: composeResult.reveal_commit_value_sats,
+      commit_output_script_hex: composeResult.reveal_commit_script_pubkey_hex,
+      witness_script_hex: composeResult.reveal_witness_script_hex,
+      reveal_secret_key_hex: composeResult.reveal_secret_key_hex,
+      internal_key_hex: composeResult.reveal_internal_key_hex,
+      merkle_root_hex: composeResult.reveal_merkle_root_hex,
+      destination: composeResult.reveal_destination_address,
+      postage_sats: composeResult.reveal_postage_sats,
+      content_hash: composeResult.content_hash,
+      asset_name: form.assetName.trim().toUpperCase(),
+      source_address: wallet.address,
+      opreturn_script_hex: composeResult.opreturn_script_hex,
+    }),
+  })
 
   let signedPsbt: string
   try {
     signedPsbt = await window.unisat.signPsbt(base64ToHex(composeResult.psbt), { autoFinalized: true })
   } catch (error) {
-    await jsonFetch('/api/compose', {
+    await jsonFetch(resolveAcmeUrl('/api/compose'), {
       method: 'POST',
       body: JSON.stringify({
         type: 'witness_art_cancel',
@@ -378,7 +390,7 @@ export const mintStampOnAcme = async ({
   }
 
   const rawHex = parsed.extractTransaction().toHex()
-  const broadcastResult = await jsonFetch<{ txid?: string }>('/admin/bitcoin/transactions', {
+  const broadcastResult = await jsonFetch<{ txid?: string }>(resolveAcmeUrl('/admin/bitcoin/transactions'), {
     method: 'POST',
     body: JSON.stringify({ hex: rawHex }),
   })
